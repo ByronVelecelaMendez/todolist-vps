@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>To-Do List | VPS CI/CD</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; background:#0f172a; color:#e2e8f0; min-height:100vh; padding:2rem 1rem; }
+  .wrap { max-width:760px; margin:0 auto; }
+  header { margin-bottom:1.75rem; }
+  h1 { font-size:1.75rem; font-weight:650; letter-spacing:-.02em; }
+  .sub { color:#94a3b8; font-size:.875rem; margin-top:.25rem; }
+  .card { background:#1e293b; border:1px solid #334155; border-radius:12px; padding:1.25rem; margin-bottom:1.25rem; }
+  label { display:block; font-size:.8rem; color:#94a3b8; margin-bottom:.35rem; }
+  input[type=text], textarea { width:100%; background:#0f172a; border:1px solid #334155; border-radius:8px; padding:.65rem .8rem; color:#e2e8f0; font-size:.95rem; font-family:inherit; }
+  input:focus, textarea:focus { outline:none; border-color:#38bdf8; }
+  textarea { resize:vertical; min-height:64px; }
+  .row { margin-bottom:.85rem; }
+  button { cursor:pointer; border:none; border-radius:8px; font-size:.9rem; font-weight:550; font-family:inherit; padding:.6rem 1.1rem; transition:opacity .15s; }
+  button:hover { opacity:.85; }
+  .btn-primary { background:#38bdf8; color:#0f172a; }
+  .btn-ghost { background:#334155; color:#e2e8f0; }
+  .btn-sm { padding:.35rem .7rem; font-size:.8rem; }
+  .btn-danger { background:#7f1d1d; color:#fecaca; }
+  .filtro { position:relative; }
+  .filtro input { padding-left:2.2rem; }
+  .filtro span { position:absolute; left:.75rem; top:50%; transform:translateY(-50%); color:#64748b; }
+  ul { list-style:none; }
+  li { background:#1e293b; border:1px solid #334155; border-radius:10px; padding:.9rem 1rem; margin-bottom:.6rem; display:flex; align-items:flex-start; gap:.85rem; }
+  li.done .titulo { text-decoration:line-through; color:#64748b; }
+  li.done .desc { color:#475569; }
+  .chk { width:20px; height:20px; margin-top:2px; cursor:pointer; accent-color:#38bdf8; flex-shrink:0; }
+  .body { flex:1; min-width:0; }
+  .titulo { font-weight:550; font-size:.98rem; word-wrap:break-word; }
+  .desc { color:#94a3b8; font-size:.85rem; margin-top:.2rem; word-wrap:break-word; }
+  .fecha { color:#475569; font-size:.72rem; margin-top:.4rem; }
+  .acciones { display:flex; gap:.4rem; flex-shrink:0; }
+  .vacio { text-align:center; color:#64748b; padding:2.5rem 1rem; }
+  .stats { display:flex; gap:1.25rem; font-size:.8rem; color:#94a3b8; margin-bottom:.85rem; }
+  .stats b { color:#e2e8f0; }
+  .alerta { background:#7f1d1d; color:#fecaca; padding:.7rem 1rem; border-radius:8px; margin-bottom:1rem; font-size:.875rem; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Gestor de Tareas</h1>
+    <p class="sub">Despliegue automatizado en VPS &middot; Node.js + PostgreSQL + Nginx</p>
+  </header>
+
+  <div id="alerta"></div>
+
+  <div class="card">
+    <div class="row">
+      <label for="titulo">Titulo</label>
+      <input type="text" id="titulo" placeholder="Que hay que hacer?" maxlength="200">
+    </div>
+    <div class="row">
+      <label for="descripcion">Descripcion (opcional)</label>
+      <textarea id="descripcion" placeholder="Detalles adicionales"></textarea>
+    </div>
+    <button class="btn-primary" onclick="crearTarea()">Agregar tarea</button>
+  </div>
+
+  <div class="card">
+    <div class="filtro">
+      <span>&#9906;</span>
+      <input type="text" id="filtro" placeholder="Filtrar tareas en tiempo real..." oninput="render()">
+    </div>
+  </div>
+
+  <div class="stats">
+    <span>Total: <b id="stTotal">0</b></span>
+    <span>Pendientes: <b id="stPend">0</b></span>
+    <span>Completadas: <b id="stComp">0</b></span>
+  </div>
+
+  <ul id="lista"></ul>
+</div>
+
+<script>
+let tareas = [];
+
+function alerta(msg) {
+  const el = document.getElementById('alerta');
+  el.innerHTML = '<div class="alerta">' + msg + '</div>';
+  setTimeout(() => el.innerHTML = '', 4000);
+}
+
+async function cargar() {
+  try {
+    const r = await fetch('/api/tareas');
+    if (!r.ok) throw new Error('Error al cargar');
+    tareas = await r.json();
+    render();
+  } catch (e) {
+    alerta('No se pudo conectar con el servidor');
+  }
+}
+
+async function crearTarea() {
+  const titulo = document.getElementById('titulo').value;
+  const descripcion = document.getElementById('descripcion').value;
+  if (!titulo.trim()) { alerta('El titulo es obligatorio'); return; }
+  try {
+    const r = await fetch('/api/tareas', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ titulo, descripcion })
+    });
+    if (!r.ok) throw new Error();
+    document.getElementById('titulo').value = '';
+    document.getElementById('descripcion').value = '';
+    cargar();
+  } catch (e) { alerta('No se pudo crear la tarea'); }
+}
+
+async function toggle(id, completada) {
+  try {
+    await fetch('/api/tareas/' + id, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ completada })
+    });
+    cargar();
+  } catch (e) { alerta('No se pudo actualizar'); }
+}
+
+async function editar(id) {
+  const t = tareas.find(x => x.id === id);
+  const nuevo = prompt('Editar titulo:', t.titulo);
+  if (nuevo === null || !nuevo.trim()) return;
+  try {
+    await fetch('/api/tareas/' + id, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ titulo: nuevo.trim() })
+    });
+    cargar();
+  } catch (e) { alerta('No se pudo editar'); }
+}
+
+async function borrar(id) {
+  if (!confirm('Eliminar esta tarea?')) return;
+  try {
+    await fetch('/api/tareas/' + id, { method: 'DELETE' });
+    cargar();
+  } catch (e) { alerta('No se pudo eliminar'); }
+}
+
+function esc(s) {
+  if (!s) return '';
+  return s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+function render() {
+  const q = document.getElementById('filtro').value.toLowerCase().trim();
+  const vis = tareas.filter(t =>
+    !q || t.titulo.toLowerCase().includes(q) || (t.descripcion || '').toLowerCase().includes(q)
+  );
+
+  document.getElementById('stTotal').textContent = tareas.length;
+  document.getElementById('stPend').textContent = tareas.filter(t => !t.completada).length;
+  document.getElementById('stComp').textContent = tareas.filter(t => t.completada).length;
+
+  const ul = document.getElementById('lista');
+  if (!vis.length) {
+    ul.innerHTML = '<div class="vacio">' + (q ? 'Sin coincidencias para "' + esc(q) + '"' : 'No hay tareas todavia') + '</div>';
+    return;
+  }
+
+  ul.innerHTML = vis.map(t => `
+    <li class="${t.completada ? 'done' : ''}">
+      <input class="chk" type="checkbox" ${t.completada ? 'checked' : ''} onchange="toggle(${t.id}, this.checked)">
+      <div class="body">
+        <div class="titulo">${esc(t.titulo)}</div>
+        ${t.descripcion ? '<div class="desc">' + esc(t.descripcion) + '</div>' : ''}
+        <div class="fecha">${new Date(t.creado_en).toLocaleString('es-EC')}</div>
+      </div>
+      <div class="acciones">
+        <button class="btn-ghost btn-sm" onclick="editar(${t.id})">Editar</button>
+        <button class="btn-danger btn-sm" onclick="borrar(${t.id})">Borrar</button>
+      </div>
+    </li>
+  `).join('');
+}
+
+document.getElementById('titulo').addEventListener('keypress', e => {
+  if (e.key === 'Enter') crearTarea();
+});
+
+cargar();
+</script>
+</body>
+</html>
