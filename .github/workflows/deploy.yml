@@ -1,0 +1,46 @@
+﻿name: CI/CD Deploy to VPS
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build-and-deploy:
+    runs-on: [self-hosted, vps-local]
+
+    steps:
+      - name: Checkout del codigo
+        uses: actions/checkout@v4
+
+      - name: Verificar version de Node
+        run: node -v && npm -v
+
+      - name: Instalar dependencias
+        run: npm ci --omit=dev
+
+      - name: Validar sintaxis del servidor
+        run: node --check server.js
+
+      - name: Desplegar archivos al directorio de produccion
+        run: |
+          rsync -av --delete \
+            --exclude '.git' \
+            --exclude '.github' \
+            --exclude 'node_modules' \
+            --exclude '.env' \
+            ./ /var/www/todolist/
+
+      - name: Instalar dependencias en produccion
+        run: |
+          cd /var/www/todolist
+          npm ci --omit=dev
+
+      - name: Reiniciar servicio de la aplicacion
+        run: sudo /usr/bin/systemctl restart todolist
+
+      - name: Verificar despliegue
+        run: |
+          sleep 5
+          curl -f http://localhost/api/health || exit 1
+          echo "Despliegue verificado correctamente"
